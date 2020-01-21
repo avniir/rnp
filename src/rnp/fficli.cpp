@@ -1125,7 +1125,7 @@ key_matches_string(rnp_key_handle_t handle, const std::string &str)
         goto done;
     }
 #else
-    re.assign(str, std::regex_constants::extended | std::regex_constants::icase);
+    re.assign(str, std::regex_constants::ECMAScript | std::regex_constants::icase);
 #endif
 
     for (size_t idx = 0; idx < uid_count; idx++) {
