@@ -11,6 +11,7 @@ from subprocess import Popen, PIPE
 
 RNP_ROOT = None
 WORKDIR = ''
+CONSOLE_ENCODING = 'utf-8'
 
 class CLIError(Exception):
     def __init__(self, message, log = None):
@@ -153,7 +154,8 @@ def run_proc(proc, params, stdin=None):
     if is_windows():
         return run_proc_windows(proc, params, stdin)
 
-    logging.debug((proc + ' ' + ' '.join(params)).strip())
+    paramline = u' '.join(map(lambda param: param.decode(CONSOLE_ENCODING), params))
+    logging.debug((proc + ' ' + paramline).strip())
     process = Popen([proc] + params, stdout=PIPE, stderr=PIPE, stdin=PIPE if stdin else None)
     output, errout = process.communicate(stdin)
     retcode = process.poll()
