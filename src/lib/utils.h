@@ -31,8 +31,22 @@
 #include <limits.h>
 
 #define RNP_MSG(msg) (void) fprintf(stdout, msg);
+
+/* -1 -- not initialized
+    0 -- logging is off
+    1 -- loggin is on
+*/
+extern short _rnp_log_switch;
+/* initialize logging switch from environment */
+void rnp_init_log_switch();
+
 #define RNP_LOG_FD(fd, ...)                                                  \
     do {                                                                     \
+        if (_rnp_log_switch < 0) {                                           \
+            rnp_init_log_switch();                                           \
+        }                                                                    \
+        if (!_rnp_log_switch)                                                \
+            break;                                                           \
         (void) fprintf((fd), "[%s() %s:%d] ", __func__, __FILE__, __LINE__); \
         (void) fprintf((fd), __VA_ARGS__);                                   \
         (void) fprintf((fd), "\n");                                          \
@@ -132,6 +146,9 @@ const char *pgp_str_from_map(int, pgp_map_t *);
 bool rnp_set_debug(const char *);
 bool rnp_get_debug(const char *);
 void rnp_clear_debug();
+
+/* environment variable name */
+static const char RNP_LOG_CONSOLE[] = "RNP_LOG_CONSOLE";
 
 /* Portable way to convert bits to bytes */
 

@@ -234,6 +234,21 @@ rnp_clear_debug()
     debugc = 0;
 }
 
+short _rnp_log_switch =
+#ifdef NDEBUG
+  -1 // lazy-initialize later
+#else
+  1 // always on in debug build
+#endif
+  ;
+
+void
+rnp_init_log_switch()
+{
+    const char *var = getenv(RNP_LOG_CONSOLE);
+    _rnp_log_switch = !!var;
+}
+
 /* portable replacement for strcasecmp(3) */
 int
 rnp_strcasecmp(const char *s1, const char *s2)
