@@ -176,7 +176,7 @@ def run_proc(proc, params, stdin=None):
     if is_windows():
         return run_proc_windows(proc, params, stdin)
 
-    paramline = u' '.join(map(lambda param: param.decode(CONSOLE_ENCODING), params))
+    paramline = u' '.join(map(lambda param: try: param.decode(CONSOLE_ENCODING) except AttributeError: param, params))
     logging.debug((proc + ' ' + paramline).strip())
     process = Popen([proc] + params, stdout=PIPE, stderr=PIPE,
                     stdin=PIPE if stdin else None, close_fds=False, universal_newlines=True)

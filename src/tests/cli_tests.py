@@ -31,6 +31,11 @@ TESTS_SUCCEEDED = []
 TESTS_FAILED = []
 TEST_WORKFILES = []
 
+try:
+    unichr = unichr
+except NameError:
+    unichr = chr
+
 UNICODE_LATIN_CAPITAL_A_GRAVE = unichr(192)
 UNICODE_LATIN_SMALL_A_GRAVE = unichr(224)
 UNICODE_LATIN_CAPITAL_A_MACRON = unichr(256)
