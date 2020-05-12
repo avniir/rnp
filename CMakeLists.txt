@@ -27,14 +27,15 @@
 # 3.10+ for CPackFreeBSD (FreeBSD packaging)
 # 3.10+ for gtest_discover_tests (parallel rnp_tests)
 # 3.12+ for NAMELINK_COMPONENT (for better RPM packaging)
-cmake_minimum_required(VERSION 3.10)
+# 3.12+ for Python3 find module
+cmake_minimum_required(VERSION 3.12)
 
 # contact email, other info
 include(cmake/info.cmake)
 
 # determine version
 if (NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/version.cmake")
-  file(DOWNLOAD https://raw.githubusercontent.com/riboseinc/cmake-versioning/master/version.cmake
+  file(DOWNLOAD https://raw.githubusercontent.com/riboseinc/cmake-versioning/c78a0be/version.cmake
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/version.cmake")
 endif()
 include(cmake/version.cmake)

@@ -915,13 +915,15 @@ TEST_F(rnp_tests, test_generated_key_sigs)
 
     // primary
     {
-        pgp_key_t                 pub = {0};
-        pgp_key_t                 sec = {0};
+        pgp_key_t                 pub = {};
+        pgp_key_t                 sec = {};
         rnp_keygen_primary_desc_t desc;
         pgp_fingerprint_t         fp = {};
         pgp_sig_subpkt_t *        subpkt = NULL;
         pgp_signature_t *         psig = NULL;
         pgp_signature_t *         ssig = NULL;
+        pgp_signature_info_t      psiginfo = {};
+        pgp_signature_info_t      ssiginfo = {};
 
         memset(&desc, 0, sizeof(desc));
         desc.crypto.key_alg = PGP_PKA_RSA;
@@ -940,6 +942,10 @@ TEST_F(rnp_tests, test_generated_key_sigs)
         primary_sec = rnp_key_store_get_key_by_grip(secring, pgp_key_get_grip(&pub));
         assert_non_null(primary_pub);
         assert_non_null(primary_sec);
+        assert_true(primary_pub->valid);
+        assert_true(primary_pub->validated);
+        assert_true(primary_sec->valid);
+        assert_true(primary_sec->validated);
 
         // check packet and subsig counts
         assert_int_equal(3, pgp_key_get_rawpacket_count(&pub));
@@ -957,10 +963,10 @@ TEST_F(rnp_tests, test_generated_key_sigs)
 
         // validate the userid self-sig
 
-        assert_rnp_success(signature_validate_certification(psig,
-                                                            pgp_key_get_pkt(&pub),
-                                                            &pgp_key_get_userid(&pub, 0)->pkt,
-                                                            pgp_key_get_material(&pub)));
+        psiginfo.sig = psig;
+        psiginfo.signer = &pub;
+        assert_rnp_success(signature_check_certification(
+          &psiginfo, pgp_key_get_pkt(&pub), &pgp_key_get_userid(&pub, 0)->pkt));
         assert_true(signature_get_keyfp(psig, &fp));
         assert_true(fingerprint_equal(&fp, pgp_key_get_fp(&pub)));
         // check subpackets and their contents
@@ -977,10 +983,10 @@ TEST_F(rnp_tests, test_generated_key_sigs)
         assert_true(subpkt->hashed);
         assert_true(subpkt->fields.create <= time(NULL));
 
-        assert_rnp_success(signature_validate_certification(ssig,
-                                                            pgp_key_get_pkt(&sec),
-                                                            &pgp_key_get_userid(&sec, 0)->pkt,
-                                                            pgp_key_get_material(&sec)));
+        ssiginfo.sig = ssig;
+        ssiginfo.signer = &sec;
+        assert_rnp_success(signature_check_certification(
+          &ssiginfo, pgp_key_get_pkt(&sec), &pgp_key_get_userid(&sec, 0)->pkt));
         assert_true(signature_get_keyfp(ssig, &fp));
         assert_true(fingerprint_equal(&fp, pgp_key_get_fp(&sec)));
 
@@ -988,60 +994,73 @@ TEST_F(rnp_tests, test_generated_key_sigs)
         psig->hashed_data[32] ^= 0xff;
         ssig->hashed_data[32] ^= 0xff;
         // ensure validation fails
-        assert_rnp_failure(signature_validate_certification(psig,
-                                                            pgp_key_get_pkt(&pub),
-                                                            &pgp_key_get_userid(&pub, 0)->pkt,
-                                                            pgp_key_get_material(&pub)));
-        assert_rnp_failure(signature_validate_certification(ssig,
-                                                            pgp_key_get_pkt(&sec),
-                                                            &pgp_key_get_userid(&sec, 0)->pkt,
-                                                            pgp_key_get_material(&sec)));
+        assert_rnp_failure(signature_check_certification(
+          &psiginfo, pgp_key_get_pkt(&pub), &pgp_key_get_userid(&pub, 0)->pkt));
+        assert_rnp_failure(signature_check_certification(
+          &ssiginfo, pgp_key_get_pkt(&sec), &pgp_key_get_userid(&sec, 0)->pkt));
         // restore the original data
         psig->hashed_data[32] ^= 0xff;
         ssig->hashed_data[32] ^= 0xff;
         // ensure validation fails with incorrect uid
         pgp_userid_pkt_t uid = {
           .tag = PGP_PKT_USER_ID, .uid = (uint8_t *) "fake", .uid_len = 4};
-        assert_rnp_failure(signature_validate_certification(
-          psig, pgp_key_get_pkt(&pub), &uid, pgp_key_get_material(&pub)));
-        assert_rnp_failure(signature_validate_certification(
-          ssig, pgp_key_get_pkt(&sec), &uid, pgp_key_get_material(&sec)));
+
+        assert_rnp_failure(
+          signature_check_certification(&psiginfo, pgp_key_get_pkt(&pub), &uid));
+        assert_rnp_failure(
+          signature_check_certification(&ssiginfo, pgp_key_get_pkt(&sec), &uid));
 
         // validate via an alternative method
         // primary_pub + pubring
-        assert_rnp_success(pgp_key_validate(primary_pub, pubring));
+        primary_pub->valid = false;
+        primary_pub->validated = false;
+        pgp_key_validate(primary_pub, pubring);
         assert_true(primary_pub->valid);
+        assert_true(primary_pub->validated);
         // primary_sec + pubring
-        assert_rnp_success(pgp_key_validate(primary_sec, pubring));
+        primary_sec->valid = false;
+        primary_sec->validated = false;
+        pgp_key_validate(primary_sec, pubring);
         assert_true(primary_sec->valid);
+        assert_true(primary_sec->validated);
         // primary_pub + secring
-        assert_rnp_success(pgp_key_validate(primary_pub, secring));
+        primary_pub->valid = primary_pub->validated = false;
+        pgp_key_validate(primary_pub, secring);
         assert_true(primary_pub->valid);
+        assert_true(primary_pub->validated);
         // primary_sec + secring
-        assert_rnp_success(pgp_key_validate(primary_sec, secring));
+        primary_sec->valid = primary_sec->validated = false;
+        pgp_key_validate(primary_sec, secring);
         assert_true(primary_sec->valid);
+        assert_true(primary_sec->validated);
         // modify a hashed portion of the sig packet, offset may change in future
         pgp_subsig_t *sig = pgp_key_get_subsig(primary_pub, 0);
         assert_non_null(sig);
         sig->sig.hashed_data[10] ^= 0xff;
+        sig->validated = false;
         // ensure validation fails
-        assert_rnp_success(pgp_key_validate(primary_pub, pubring));
+        pgp_key_validate(primary_pub, pubring);
         assert_false(primary_pub->valid);
+        assert_true(primary_pub->validated);
         // restore the original data
         sig->sig.hashed_data[10] ^= 0xff;
-        assert_rnp_success(pgp_key_validate(primary_pub, pubring));
+        sig->validated = false;
+        pgp_key_validate(primary_pub, pubring);
         assert_true(primary_pub->valid);
+        assert_true(primary_pub->validated);
     }
 
     // sub
     {
-        pgp_key_t                pub = {0};
-        pgp_key_t                sec = {0};
+        pgp_key_t                pub = {};
+        pgp_key_t                sec = {};
         rnp_keygen_subkey_desc_t desc;
         pgp_fingerprint_t        fp = {};
         pgp_sig_subpkt_t *       subpkt = NULL;
         pgp_signature_t *        psig = NULL;
         pgp_signature_t *        ssig = NULL;
+        pgp_signature_info_t     psiginfo = {};
+        pgp_signature_info_t     ssiginfo = {};
 
         memset(&desc, 0, sizeof(desc));
         desc.crypto.key_alg = PGP_PKA_RSA;
@@ -1051,6 +1070,10 @@ TEST_F(rnp_tests, test_generated_key_sigs)
         // generate
         assert_true(pgp_generate_subkey(
           &desc, true, primary_sec, primary_pub, &sec, &pub, NULL, PGP_KEY_STORE_GPG));
+        assert_true(pub.valid);
+        assert_true(pub.validated);
+        assert_true(sec.valid);
+        assert_true(sec.validated);
 
         // check packet and subsig counts
         assert_int_equal(2, pgp_key_get_rawpacket_count(&pub));
@@ -1066,8 +1089,10 @@ TEST_F(rnp_tests, test_generated_key_sigs)
         assert_int_equal(PGP_PKT_SIGNATURE, pgp_key_get_rawpacket(&pub, 1)->tag);
         assert_int_equal(PGP_PKT_SIGNATURE, pgp_key_get_rawpacket(&sec, 1)->tag);
         // validate the binding sig
-        assert_rnp_success(signature_validate_binding(
-          psig, pgp_key_get_pkt(primary_pub), pgp_key_get_pkt(&pub)));
+        psiginfo.sig = psig;
+        psiginfo.signer = primary_pub;
+        assert_rnp_success(signature_check_binding(
+          &psiginfo, pgp_key_get_pkt(primary_pub), pgp_key_get_pkt(&pub)));
         assert_true(signature_get_keyfp(psig, &fp));
         assert_true(fingerprint_equal(&fp, pgp_key_get_fp(primary_pub)));
         // check subpackets and their contents
@@ -1084,8 +1109,10 @@ TEST_F(rnp_tests, test_generated_key_sigs)
         assert_true(subpkt->hashed);
         assert_true(subpkt->fields.create <= time(NULL));
 
-        assert_rnp_success(signature_validate_binding(
-          ssig, pgp_key_get_pkt(primary_pub), pgp_key_get_pkt(&sec)));
+        ssiginfo.sig = ssig;
+        ssiginfo.signer = primary_pub;
+        assert_rnp_success(signature_check_binding(
+          &ssiginfo, pgp_key_get_pkt(primary_pub), pgp_key_get_pkt(&sec)));
         assert_true(signature_get_keyfp(ssig, &fp));
         assert_true(fingerprint_equal(&fp, pgp_key_get_fp(primary_sec)));
 
@@ -1093,10 +1120,10 @@ TEST_F(rnp_tests, test_generated_key_sigs)
         psig->hashed_data[10] ^= 0xff;
         ssig->hashed_data[10] ^= 0xff;
         // ensure validation fails
-        assert_rnp_failure(signature_validate_binding(
-          psig, pgp_key_get_pkt(primary_pub), pgp_key_get_pkt(&pub)));
-        assert_rnp_failure(signature_validate_binding(
-          ssig, pgp_key_get_pkt(primary_pub), pgp_key_get_pkt(&sec)));
+        assert_rnp_failure(signature_check_binding(
+          &psiginfo, pgp_key_get_pkt(primary_pub), pgp_key_get_pkt(&pub)));
+        assert_rnp_failure(signature_check_binding(
+          &ssiginfo, pgp_key_get_pkt(primary_pub), pgp_key_get_pkt(&sec)));
         // restore the original data
         psig->hashed_data[10] ^= 0xff;
         ssig->hashed_data[10] ^= 0xff;
@@ -1109,12 +1136,22 @@ TEST_F(rnp_tests, test_generated_key_sigs)
         sub_sec = rnp_key_store_get_key_by_grip(secring, pgp_key_get_grip(&pub));
         assert_non_null(sub_pub);
         assert_non_null(sub_sec);
+        assert_true(sub_pub->valid);
+        assert_true(sub_pub->validated);
+        assert_true(sub_sec->valid);
+        assert_true(sub_sec->validated);
 
         // validate via an alternative method
-        assert_rnp_success(pgp_key_validate(sub_pub, pubring));
+        sub_pub->valid = false;
+        sub_pub->validated = false;
+        pgp_key_validate(sub_pub, pubring);
         assert_true(sub_pub->valid);
-        assert_rnp_success(pgp_key_validate(sub_sec, pubring));
+        assert_true(sub_pub->validated);
+        sub_sec->valid = false;
+        sub_sec->validated = false;
+        pgp_key_validate(sub_sec, pubring);
         assert_true(sub_sec->valid);
+        assert_true(sub_sec->validated);
     }
 
     rnp_key_store_free(pubring);

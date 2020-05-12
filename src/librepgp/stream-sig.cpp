@@ -93,7 +93,7 @@ signature_add_subpkt(pgp_signature_t *        sig,
     }
 
     if (reuse && (subpkt = signature_get_subpkt(sig, type))) {
-        free(subpkt->data);
+        free_signature_subpkt(subpkt);
         memset(subpkt, 0, sizeof(*subpkt));
     }
 
@@ -110,7 +110,6 @@ signature_add_subpkt(pgp_signature_t *        sig,
 
     subpkt->type = type;
     subpkt->len = datalen;
-
     return subpkt;
 }
 
@@ -871,6 +870,7 @@ signature_fill_hashed_data(pgp_signature_t *sig)
     }
 
     if (res) {
+        free(sig->hashed_data);
         /* get ownership on body data */
         sig->hashed_data = hbody.data;
         sig->hashed_len = hbody.len;
@@ -1017,86 +1017,6 @@ signature_hash_direct(const pgp_signature_t *sig, const pgp_key_pkt_t *key, pgp_
 }
 
 rnp_result_t
-signature_validate_certification(const pgp_signature_t *   sig,
-                                 const pgp_key_pkt_t *     key,
-                                 const pgp_userid_pkt_t *  uid,
-                                 const pgp_key_material_t *signer)
-{
-    pgp_hash_t hash = {0};
-
-    if (!signature_hash_certification(sig, key, uid, &hash)) {
-        return RNP_ERROR_BAD_FORMAT;
-    }
-
-    return signature_validate(sig, signer, &hash);
-}
-
-rnp_result_t
-signature_validate_binding(const pgp_signature_t *sig,
-                           const pgp_key_pkt_t *  key,
-                           const pgp_key_pkt_t *  subkey)
-{
-    pgp_hash_t   hash = {};
-    pgp_hash_t   hashcp = {};
-    rnp_result_t res = RNP_ERROR_SIGNATURE_INVALID;
-
-    if (!signature_hash_binding(sig, key, subkey, &hash)) {
-        return RNP_ERROR_BAD_FORMAT;
-    }
-
-    if (!pgp_hash_copy(&hashcp, &hash)) {
-        RNP_LOG("hash copy failed");
-        return RNP_ERROR_BAD_STATE;
-    }
-
-    res = signature_validate(sig, &key->material, &hash);
-
-    /* check primary key binding signature if any */
-    if (!res && (signature_get_key_flags(sig) & PGP_KF_SIGN)) {
-        pgp_sig_subpkt_t *subpkt =
-          signature_get_subpkt(sig, PGP_SIG_SUBPKT_EMBEDDED_SIGNATURE);
-        if (!subpkt) {
-            RNP_LOG("error! no primary key binding signature");
-            res = RNP_ERROR_SIGNATURE_INVALID;
-            goto finish;
-        }
-        if (!subpkt->parsed) {
-            RNP_LOG("invalid embedded signature subpacket");
-            res = RNP_ERROR_SIGNATURE_INVALID;
-            goto finish;
-        }
-        if (subpkt->fields.sig.type != PGP_SIG_PRIMARY) {
-            RNP_LOG("invalid primary key binding signature");
-            res = RNP_ERROR_SIGNATURE_INVALID;
-            goto finish;
-        }
-        if (subpkt->fields.sig.version < PGP_V4) {
-            RNP_LOG("invalid primary key binding signature version");
-            res = RNP_ERROR_SIGNATURE_INVALID;
-            goto finish;
-        }
-        res = signature_validate(&subpkt->fields.sig, &subkey->material, &hashcp);
-    }
-finish:
-    pgp_hash_finish(&hashcp, NULL);
-    return res;
-}
-
-rnp_result_t
-signature_validate_direct(const pgp_signature_t *   sig,
-                          const pgp_key_pkt_t *     key,
-                          const pgp_key_material_t *signer)
-{
-    pgp_hash_t hash = {0};
-
-    if (!signature_hash_direct(sig, key, &hash)) {
-        return RNP_ERROR_BAD_FORMAT;
-    }
-
-    return signature_validate(sig, signer, &hash);
-}
-
-rnp_result_t
 signature_check(pgp_signature_info_t *sinfo, pgp_hash_t *hash)
 {
     time_t            now;
@@ -1178,34 +1098,13 @@ signature_check_certification(pgp_signature_info_t *  sinfo,
                               const pgp_key_pkt_t *   key,
                               const pgp_userid_pkt_t *uid)
 {
-    pgp_hash_t   hash = {};
-    uint8_t      keyid[PGP_KEY_ID_SIZE];
-    rnp_result_t res = RNP_ERROR_SIGNATURE_INVALID;
+    pgp_hash_t hash = {};
 
     if (!signature_hash_certification(sinfo->sig, key, uid, &hash)) {
         return RNP_ERROR_BAD_FORMAT;
     }
 
-    res = signature_check(sinfo, &hash);
-
-    if (res) {
-        return res;
-    }
-
-    /* check key expiration time, only for self-signature. While sinfo->expired tells about
-       the signature expiry, we'll use it for bkey expiration as well */
-    if (signature_get_keyid(sinfo->sig, keyid) &&
-        !memcmp(keyid, pgp_key_get_keyid(sinfo->signer), PGP_KEY_ID_SIZE)) {
-        uint32_t expiry = signature_get_key_expiration(sinfo->sig);
-        uint32_t now = time(NULL);
-
-        if (expiry && (key->creation_time + expiry < now)) {
-            RNP_LOG("key expired %d seconds ago", (int) now - expiry - key->creation_time);
-            sinfo->expired = true;
-        }
-    }
-
-    return res;
+    return signature_check(sinfo, &hash);
 }
 
 rnp_result_t
@@ -1227,19 +1126,6 @@ signature_check_binding(pgp_signature_info_t *sinfo,
     }
 
     res = signature_check(sinfo, &hash);
-
-    /* check subkey expiration time. While sinfo->expired tells about the signature expiry,
-       we'll use it for subkey expiration as well */
-    if (!res) {
-        uint32_t expiry = signature_get_key_expiration(sinfo->sig);
-        uint32_t now = time(NULL);
-
-        if (expiry && (subkey->creation_time + expiry < now)) {
-            RNP_LOG("subkey expired %d seconds ago",
-                    (int) now - expiry - subkey->creation_time);
-            sinfo->expired = true;
-        }
-    }
 
     /* check primary key binding signature if any */
     if (!res && (signature_get_key_flags(sinfo->sig) & PGP_KF_SIGN)) {
