@@ -2517,6 +2517,7 @@ pgp_subsig_t::pgp_subsig_t(pgp_subsig_t &&src)
     uid = src.uid;
     sig = src.sig;
     src.sig = {};
+    rawsig = std::move(src.rawsig);
     trustlevel = src.trustlevel;
     trustamount = src.trustamount;
     key_flags = src.key_flags;
@@ -2536,6 +2537,7 @@ pgp_subsig_t::operator=(pgp_subsig_t &&src)
     uid = src.uid;
     sig = src.sig;
     src.sig = {};
+    rawsig = std::move(src.rawsig);
     trustlevel = src.trustlevel;
     trustamount = src.trustamount;
     key_flags = src.key_flags;
@@ -2569,6 +2571,7 @@ pgp_userid_t::operator=(const pgp_userid_t &src)
     if (!copy_userid_pkt(&pkt, &src.pkt)) {
         throw std::bad_alloc();
     }
+    rawpkt = src.rawpkt;
     str = src.str;
     return *this;
 }
@@ -2606,6 +2609,7 @@ pgp_key_t::operator=(pgp_key_t &&src)
     free_key_pkt(&pkt);
     pkt = src.pkt;
     src.pkt = {};
+    rawpkt = std::move(src.rawpkt);
     key_flags = src.key_flags;
     memcpy(keyid, src.keyid, sizeof(keyid));
     fingerprint = src.fingerprint;

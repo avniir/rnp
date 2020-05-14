@@ -66,13 +66,14 @@ struct pgp_key_t {
     std::vector<pgp_rawpacket_t> packets; /* array of key packets */
     std::vector<pgp_subsig_t>    subsigs; /* array of key signatures */
     std::vector<pgp_revoke_t>    revokes; /* array of revocations */
-    list          subkey_grips; /* list of subkey grips (for primary keys) as uint8_t[20] */
-    uint8_t       primary_grip[PGP_KEY_GRIP_SIZE]; /* grip of primary key (for subkeys) */
-    bool          primary_grip_set;
-    time_t        expiration; /* key expiration time, if available */
-    pgp_key_pkt_t pkt;        /* pubkey/seckey data packet */
-    uint8_t       key_flags;  /* key flags */
-    uint8_t       keyid[PGP_KEY_ID_SIZE];
+    list            subkey_grips; /* list of subkey grips (for primary keys) as uint8_t[20] */
+    uint8_t         primary_grip[PGP_KEY_GRIP_SIZE]; /* grip of primary key (for subkeys) */
+    bool            primary_grip_set;
+    time_t          expiration; /* key expiration time, if available */
+    pgp_key_pkt_t   pkt;        /* pubkey/seckey data packet */
+    pgp_rawpacket_t rawpkt;     /* key raw packet */
+    uint8_t         key_flags;  /* key flags */
+    uint8_t         keyid[PGP_KEY_ID_SIZE];
     pgp_fingerprint_t      fingerprint;
     uint8_t                grip[PGP_KEY_GRIP_SIZE];
     uint32_t               uid0;         /* primary uid index in uids array */
