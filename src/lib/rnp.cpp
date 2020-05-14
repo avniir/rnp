@@ -5163,8 +5163,7 @@ rnp_result_t
 rnp_signature_handle_destroy(rnp_signature_handle_t sig)
 {
     if (sig && sig->own_sig) {
-        pgp_subsig_free(sig->sig);
-        free(sig->sig);
+        delete sig->sig;
     }
     free(sig);
     return RNP_SUCCESS;
